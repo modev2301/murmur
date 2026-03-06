@@ -20,8 +20,9 @@ pub struct DnsProbe {
 impl DnsProbe {
     /// Create a new DNS probe with system resolver configuration.
     pub fn new() -> Self {
-        let resolver = TokioAsyncResolver::tokio_from_system_conf()
-            .unwrap_or_else(|_| TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default()));
+        let resolver = TokioAsyncResolver::tokio_from_system_conf().unwrap_or_else(|_| {
+            TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default())
+        });
         Self {
             resolver: Arc::new(resolver),
         }
@@ -38,11 +39,21 @@ impl DnsProbe {
     fn extract_hostname(url: &str) -> &str {
         // Try to parse as URL first
         if let Some(stripped) = url.strip_prefix("https://") {
-            stripped.split('/').next().unwrap_or(stripped)
-                .split(':').next().unwrap_or(stripped)
+            stripped
+                .split('/')
+                .next()
+                .unwrap_or(stripped)
+                .split(':')
+                .next()
+                .unwrap_or(stripped)
         } else if let Some(stripped) = url.strip_prefix("http://") {
-            stripped.split('/').next().unwrap_or(stripped)
-                .split(':').next().unwrap_or(stripped)
+            stripped
+                .split('/')
+                .next()
+                .unwrap_or(stripped)
+                .split(':')
+                .next()
+                .unwrap_or(stripped)
         } else {
             // Assume it's just a hostname
             url.split(':').next().unwrap_or(url)
@@ -88,8 +99,7 @@ impl Probe for DnsProbe {
                         .with_dns(elapsed)
                         .with_total(elapsed);
 
-                    ProbeResult::success(target.clone(), timing)
-                        .with_resolved_ip(*first_ip)
+                    ProbeResult::success(target.clone(), timing).with_resolved_ip(*first_ip)
                 } else {
                     ProbeResult::failure(
                         target.clone(),
@@ -136,18 +146,30 @@ mod tests {
 
     #[test]
     fn extract_hostname_from_https_url() {
-        assert_eq!(DnsProbe::extract_hostname("https://example.com/path"), "example.com");
-        assert_eq!(DnsProbe::extract_hostname("https://example.com:443/path"), "example.com");
+        assert_eq!(
+            DnsProbe::extract_hostname("https://example.com/path"),
+            "example.com"
+        );
+        assert_eq!(
+            DnsProbe::extract_hostname("https://example.com:443/path"),
+            "example.com"
+        );
     }
 
     #[test]
     fn extract_hostname_from_http_url() {
-        assert_eq!(DnsProbe::extract_hostname("http://example.com/path"), "example.com");
+        assert_eq!(
+            DnsProbe::extract_hostname("http://example.com/path"),
+            "example.com"
+        );
     }
 
     #[test]
     fn extract_hostname_bare() {
         assert_eq!(DnsProbe::extract_hostname("example.com"), "example.com");
-        assert_eq!(DnsProbe::extract_hostname("example.com:8080"), "example.com");
+        assert_eq!(
+            DnsProbe::extract_hostname("example.com:8080"),
+            "example.com"
+        );
     }
 }

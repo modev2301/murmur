@@ -35,22 +35,23 @@ impl HttpProbe {
     /// Create a new HTTP probe.
     ///
     /// # Panics
-    /// 
+    ///
     /// Panics if the TLS provider cannot be initialized. This indicates a
     /// build configuration error (missing crypto backend), not a runtime
     /// condition. Per the project style guide, panics are acceptable for
     /// programming errors that cannot occur in correctly built code.
     pub fn new() -> Self {
         // Use system DNS configuration instead of hardcoded Google DNS
-        let resolver = TokioAsyncResolver::tokio_from_system_conf()
-            .unwrap_or_else(|_| TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default()));
+        let resolver = TokioAsyncResolver::tokio_from_system_conf().unwrap_or_else(|_| {
+            TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default())
+        });
 
         let root_store =
             rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
 
         // Use the default crypto provider (aws-lc-rs)
         let provider = rustls::crypto::aws_lc_rs::default_provider();
-        
+
         // This only fails if the provider doesn't support any safe TLS versions,
         // which would be a build-time configuration error, not a runtime condition.
         #[allow(clippy::expect_used)]
@@ -89,7 +90,9 @@ impl HttpProbe {
 
         let (host, port) = if let Some(colon_pos) = host_port.rfind(':') {
             let h = &host_port[..colon_pos];
-            let p = host_port[colon_pos + 1..].parse().unwrap_or(if is_https { 443 } else { 80 });
+            let p = host_port[colon_pos + 1..]
+                .parse()
+                .unwrap_or(if is_https { 443 } else { 80 });
             (h, p)
         } else {
             (host_port, if is_https { 443 } else { 80 })
@@ -112,7 +115,8 @@ impl HttpProbe {
             path,
             host,
             env!("CARGO_PKG_VERSION")
-        ).ok();
+        )
+        .ok();
         request
     }
 
@@ -235,78 +239,89 @@ impl Probe for HttpProbe {
         // ========================================
         // Phase 3: TLS Handshake (if HTTPS)
         // ========================================
-        let (tls_duration, tls_info, mut stream): (_, Option<TlsInfo>, Box<dyn AsyncReadWriteUnpin>) =
-            if is_https {
-                debug!(hostname = hostname, "starting TLS handshake");
-                let tls_start = Instant::now();
+        let (tls_duration, tls_info, mut stream): (
+            _,
+            Option<TlsInfo>,
+            Box<dyn AsyncReadWriteUnpin>,
+        ) = if is_https {
+            debug!(hostname = hostname, "starting TLS handshake");
+            let tls_start = Instant::now();
 
-                let server_name = match ServerName::try_from(hostname.to_string()) {
-                    Ok(name) => name,
-                    Err(e) => {
-                        return ProbeResult::failure(
-                            target.clone(),
-                            format!("invalid server name {hostname}: {e}"),
-                            overall_start.elapsed(),
-                        );
-                    }
-                };
-
-                let connector = TlsConnector::from(self.tls_config.clone());
-                let tls_result = timeout(
-                    config.tls_timeout,
-                    connector.connect(server_name, tcp_stream),
-                )
-                .await;
-
-                let tls_dur = tls_start.elapsed();
-
-                match tls_result {
-                    Ok(Ok(tls_stream)) => {
-                        debug!(
-                            hostname = hostname,
-                            tls_ms = tls_dur.as_millis(),
-                            "TLS handshake completed"
-                        );
-
-                        let (_, conn) = tls_stream.get_ref();
-                        let info = TlsInfo {
-                            version: format!(
-                                "{:?}",
-                                conn.protocol_version()
-                                    .unwrap_or(rustls::ProtocolVersion::TLSv1_3)
-                            ),
-                            cipher: format!(
-                                "{:?}",
-                                conn.negotiated_cipher_suite().map(|cs| cs.suite())
-                            ),
-                            session_resumed: false,
-                            cert_expires: None,
-                            cert_subject: None,
-                        };
-
-                        (Some(tls_dur), Some(info), Box::new(tls_stream) as Box<dyn AsyncReadWriteUnpin>)
-                    }
-                    Ok(Err(e)) => {
-                        return ProbeResult::failure(
-                            target.clone(),
-                            format!("TLS handshake failed with {hostname}: {e}"),
-                            overall_start.elapsed(),
-                        );
-                    }
-                    Err(_) => {
-                        return ProbeResult::failure(
-                            target.clone(),
-                            format!(
-                                "TLS handshake timed out after {}ms with {hostname}",
-                                config.tls_timeout.as_millis()
-                            ),
-                            overall_start.elapsed(),
-                        );
-                    }
+            let server_name = match ServerName::try_from(hostname.to_string()) {
+                Ok(name) => name,
+                Err(e) => {
+                    return ProbeResult::failure(
+                        target.clone(),
+                        format!("invalid server name {hostname}: {e}"),
+                        overall_start.elapsed(),
+                    );
                 }
-            } else {
-                (None, None, Box::new(tcp_stream) as Box<dyn AsyncReadWriteUnpin>)
             };
+
+            let connector = TlsConnector::from(self.tls_config.clone());
+            let tls_result = timeout(
+                config.tls_timeout,
+                connector.connect(server_name, tcp_stream),
+            )
+            .await;
+
+            let tls_dur = tls_start.elapsed();
+
+            match tls_result {
+                Ok(Ok(tls_stream)) => {
+                    debug!(
+                        hostname = hostname,
+                        tls_ms = tls_dur.as_millis(),
+                        "TLS handshake completed"
+                    );
+
+                    let (_, conn) = tls_stream.get_ref();
+                    let info = TlsInfo {
+                        version: format!(
+                            "{:?}",
+                            conn.protocol_version()
+                                .unwrap_or(rustls::ProtocolVersion::TLSv1_3)
+                        ),
+                        cipher: format!(
+                            "{:?}",
+                            conn.negotiated_cipher_suite().map(|cs| cs.suite())
+                        ),
+                        session_resumed: false,
+                        cert_expires: None,
+                        cert_subject: None,
+                    };
+
+                    (
+                        Some(tls_dur),
+                        Some(info),
+                        Box::new(tls_stream) as Box<dyn AsyncReadWriteUnpin>,
+                    )
+                }
+                Ok(Err(e)) => {
+                    return ProbeResult::failure(
+                        target.clone(),
+                        format!("TLS handshake failed with {hostname}: {e}"),
+                        overall_start.elapsed(),
+                    );
+                }
+                Err(_) => {
+                    return ProbeResult::failure(
+                        target.clone(),
+                        format!(
+                            "TLS handshake timed out after {}ms with {hostname}",
+                            config.tls_timeout.as_millis()
+                        ),
+                        overall_start.elapsed(),
+                    );
+                }
+            }
+        } else {
+            (
+                None,
+                None,
+                Box::new(tcp_stream) as Box<dyn AsyncReadWriteUnpin>,
+            )
+        };
 
         // ========================================
         // Phase 4: HTTP Request/Response (TTFB)
@@ -390,17 +405,16 @@ impl Probe for HttpProbe {
             timing = timing.with_tls(tls_dur);
         }
 
-        let success = http_status.map(|s| (200..400).contains(&s)).unwrap_or(false);
+        let success = http_status
+            .map(|s| (200..400).contains(&s))
+            .unwrap_or(false);
 
         let mut result = if success {
             ProbeResult::success(target.clone(), timing)
         } else {
             ProbeResult::failure(
                 target.clone(),
-                format!(
-                    "HTTP request returned status {}",
-                    http_status.unwrap_or(0)
-                ),
+                format!("HTTP request returned status {}", http_status.unwrap_or(0)),
                 total_duration,
             )
         };

@@ -150,7 +150,11 @@ impl ProbeResult {
     }
 
     /// Create a failed probe result.
-    pub fn failure(target: ProbeTarget, error: impl Into<String>, total_duration: Duration) -> Self {
+    pub fn failure(
+        target: ProbeTarget,
+        error: impl Into<String>,
+        total_duration: Duration,
+    ) -> Self {
         Self {
             target,
             success: false,

@@ -86,9 +86,7 @@ impl AgentConfig {
                 .try_parsing(true),
         );
 
-        let config = builder
-            .build()
-            .map_err(|e| Error::config(e.to_string()))?;
+        let config = builder.build().map_err(|e| Error::config(e.to_string()))?;
 
         let agent_config: AgentConfig = config
             .try_deserialize()

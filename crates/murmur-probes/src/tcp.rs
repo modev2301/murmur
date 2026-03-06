@@ -22,8 +22,9 @@ pub struct TcpProbe {
 impl TcpProbe {
     /// Create a new TCP probe.
     pub fn new() -> Self {
-        let resolver = TokioAsyncResolver::tokio_from_system_conf()
-            .unwrap_or_else(|_| TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default()));
+        let resolver = TokioAsyncResolver::tokio_from_system_conf().unwrap_or_else(|_| {
+            TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default())
+        });
         Self {
             resolver: Arc::new(resolver),
         }
@@ -56,7 +57,10 @@ impl TcpProbe {
             _ => 80,
         };
 
-        (host_port.split(':').next().unwrap_or(host_port), default_port)
+        (
+            host_port.split(':').next().unwrap_or(host_port),
+            default_port,
+        )
     }
 }
 
@@ -141,8 +145,7 @@ impl Probe for TcpProbe {
                     .with_tcp(tcp_elapsed)
                     .with_total(total_elapsed);
 
-                ProbeResult::success(target.clone(), timing)
-                    .with_resolved_ip(resolved_ip)
+                ProbeResult::success(target.clone(), timing).with_resolved_ip(resolved_ip)
             }
             Ok(Err(e)) => {
                 debug!(addr = %addr, error = %e, "TCP connection failed");
@@ -177,20 +180,38 @@ mod tests {
 
     #[test]
     fn parse_target_https() {
-        assert_eq!(TcpProbe::parse_target("https://example.com"), ("example.com", 443));
-        assert_eq!(TcpProbe::parse_target("https://example.com:8443"), ("example.com", 8443));
-        assert_eq!(TcpProbe::parse_target("https://example.com/path"), ("example.com", 443));
+        assert_eq!(
+            TcpProbe::parse_target("https://example.com"),
+            ("example.com", 443)
+        );
+        assert_eq!(
+            TcpProbe::parse_target("https://example.com:8443"),
+            ("example.com", 8443)
+        );
+        assert_eq!(
+            TcpProbe::parse_target("https://example.com/path"),
+            ("example.com", 443)
+        );
     }
 
     #[test]
     fn parse_target_http() {
-        assert_eq!(TcpProbe::parse_target("http://example.com"), ("example.com", 80));
-        assert_eq!(TcpProbe::parse_target("http://example.com:8080"), ("example.com", 8080));
+        assert_eq!(
+            TcpProbe::parse_target("http://example.com"),
+            ("example.com", 80)
+        );
+        assert_eq!(
+            TcpProbe::parse_target("http://example.com:8080"),
+            ("example.com", 8080)
+        );
     }
 
     #[test]
     fn parse_target_bare() {
         assert_eq!(TcpProbe::parse_target("example.com"), ("example.com", 80));
-        assert_eq!(TcpProbe::parse_target("example.com:9000"), ("example.com", 9000));
+        assert_eq!(
+            TcpProbe::parse_target("example.com:9000"),
+            ("example.com", 9000)
+        );
     }
 }

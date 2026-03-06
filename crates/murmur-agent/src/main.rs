@@ -6,7 +6,9 @@
 use anyhow::{Context, Result};
 use murmur_core::telemetry::{init_tracing, TelemetryEmitter};
 use murmur_core::{AgentConfig, ProbeTarget};
-use murmur_probes::{dns::DnsProbe, http::HttpProbe, tcp::TcpProbe, tls::TlsProbe, Probe, ProbeConfig};
+use murmur_probes::{
+    dns::DnsProbe, http::HttpProbe, tcp::TcpProbe, tls::TlsProbe, Probe, ProbeConfig,
+};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal;
@@ -63,13 +65,7 @@ async fn main() -> Result<()> {
     let probe_interval = config.probe.interval();
     let scheduler_shutdown = shutdown_tx.subscribe();
     let scheduler_handle = tokio::spawn(async move {
-        run_scheduler(
-            result_tx,
-            probe_config,
-            probe_interval,
-            scheduler_shutdown,
-        )
-        .await;
+        run_scheduler(result_tx, probe_config, probe_interval, scheduler_shutdown).await;
     });
 
     // Wait for shutdown signal

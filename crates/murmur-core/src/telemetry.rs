@@ -94,9 +94,7 @@ impl TelemetryEmitter {
             .with_interval(Duration::from_secs(config.export_interval_seconds))
             .build();
 
-        let provider = SdkMeterProvider::builder()
-            .with_reader(reader)
-            .build();
+        let provider = SdkMeterProvider::builder().with_reader(reader).build();
 
         // Create a meter for our metrics
         let meter = provider.meter("murmur");
@@ -271,7 +269,10 @@ fn categorize_error(error: &str) -> &'static str {
     } else if lower.contains("tls") || lower.contains("certificate") || lower.contains("handshake")
     {
         "tls"
-    } else if lower.contains("tcp") || lower.contains("connection refused") || lower.contains("connection reset") {
+    } else if lower.contains("tcp")
+        || lower.contains("connection refused")
+        || lower.contains("connection reset")
+    {
         "tcp"
     } else if lower.contains("http") {
         "http"
@@ -372,11 +373,17 @@ impl AgentMetrics {
 
     /// Record a TLS session resumption.
     pub fn record_session_resumed(&self) {
-        self.sessions_resumed_counter.add(1, &self.base_attributes());
+        self.sessions_resumed_counter
+            .add(1, &self.base_attributes());
     }
 
     /// Record current state metrics (call periodically).
-    pub fn record_state(&self, active_targets: usize, discovered_endpoints: usize, pool_connections: usize) {
+    pub fn record_state(
+        &self,
+        active_targets: usize,
+        discovered_endpoints: usize,
+        pool_connections: usize,
+    ) {
         let attrs = self.base_attributes();
 
         // Record uptime
@@ -385,7 +392,8 @@ impl AgentMetrics {
 
         // Record gauges
         self.targets_gauge.record(active_targets as f64, &attrs);
-        self.discovered_gauge.record(discovered_endpoints as f64, &attrs);
+        self.discovered_gauge
+            .record(discovered_endpoints as f64, &attrs);
         self.pool_gauge.record(pool_connections as f64, &attrs);
 
         debug!(
@@ -407,8 +415,7 @@ impl AgentMetrics {
 pub fn init_tracing(format: &str, level: &str) {
     use tracing_subscriber::EnvFilter;
 
-    let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level));
 
     match format {
         "json" => {

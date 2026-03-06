@@ -7,7 +7,9 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use murmur_core::telemetry::init_tracing;
 use murmur_core::{AgentConfig, ProbeTarget};
-use murmur_probes::{dns::DnsProbe, http::HttpProbe, tcp::TcpProbe, tls::TlsProbe, Probe, ProbeConfig};
+use murmur_probes::{
+    dns::DnsProbe, http::HttpProbe, tcp::TcpProbe, tls::TlsProbe, Probe, ProbeConfig,
+};
 use std::time::Duration;
 
 #[derive(Parser)]
@@ -106,7 +108,10 @@ async fn run_probe(target: &str, probe_type: &str, timeout_secs: u64) -> Result<
             probe.measure(&target, &config).await
         }
         _ => {
-            anyhow::bail!("unknown probe type: {}. Valid types: dns, tcp, tls, http", probe_type);
+            anyhow::bail!(
+                "unknown probe type: {}. Valid types: dns, tcp, tls, http",
+                probe_type
+            );
         }
     };
 

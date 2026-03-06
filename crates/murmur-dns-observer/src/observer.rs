@@ -43,17 +43,15 @@ impl DnsObserver {
     /// - Packet capture initialization fails (usually permissions)
     pub fn new(interface: Option<&str>, confidence_threshold: f64) -> Result<Self> {
         let device = match interface {
-            Some(name) => {
-                Device::list()
-                    .map_err(|e| DnsObserverError::capture(e.to_string()))?
-                    .into_iter()
-                    .find(|d| d.name == name)
-                    .ok_or_else(|| {
-                        DnsObserverError::new(DnsObserverErrorKind::InterfaceNotFound {
-                            name: name.to_string(),
-                        })
-                    })?
-            }
+            Some(name) => Device::list()
+                .map_err(|e| DnsObserverError::capture(e.to_string()))?
+                .into_iter()
+                .find(|d| d.name == name)
+                .ok_or_else(|| {
+                    DnsObserverError::new(DnsObserverErrorKind::InterfaceNotFound {
+                        name: name.to_string(),
+                    })
+                })?,
             None => Device::lookup()
                 .map_err(|e| DnsObserverError::capture(e.to_string()))?
                 .ok_or_else(DnsObserverError::no_interfaces)?,
@@ -179,7 +177,11 @@ impl DnsObserver {
                 let after = tracker.len();
 
                 if before != after {
-                    info!(pruned = before - after, remaining = after, "pruned old endpoints");
+                    info!(
+                        pruned = before - after,
+                        remaining = after,
+                        "pruned old endpoints"
+                    );
                 }
 
                 last_prune = Instant::now();
@@ -209,7 +211,8 @@ fn map_pcap_error(err: pcap::Error) -> DnsObserverError {
         || msg.contains("EPERM")
     {
         #[cfg(target_os = "linux")]
-        let guidance = "Run as root or set capabilities: sudo setcap cap_net_raw,cap_net_admin=eip <binary>";
+        let guidance =
+            "Run as root or set capabilities: sudo setcap cap_net_raw,cap_net_admin=eip <binary>";
 
         #[cfg(target_os = "macos")]
         let guidance = "Run as root or add user to access_bpf group";

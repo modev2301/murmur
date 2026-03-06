@@ -27,18 +27,18 @@ impl TlsProbe {
     /// Create a new TLS probe with default configuration.
     ///
     /// # Panics
-    /// 
+    ///
     /// Panics if the TLS provider cannot be initialized. This indicates a
     /// build configuration error (missing crypto backend), not a runtime
     /// condition. Per the project style guide, panics are acceptable for
     /// programming errors that cannot occur in correctly built code.
     pub fn new() -> Self {
-        let resolver = TokioAsyncResolver::tokio_from_system_conf()
-            .unwrap_or_else(|_| TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default()));
+        let resolver = TokioAsyncResolver::tokio_from_system_conf().unwrap_or_else(|_| {
+            TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default())
+        });
 
-        let root_store = rustls::RootCertStore::from_iter(
-            webpki_roots::TLS_SERVER_ROOTS.iter().cloned(),
-        );
+        let root_store =
+            rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
 
         let provider = rustls::crypto::aws_lc_rs::default_provider();
 
@@ -211,10 +211,14 @@ impl Probe for TlsProbe {
                 // Extract TLS info from the connection
                 let (_, conn) = tls_stream.get_ref();
                 let tls_info = TlsInfo {
-                    version: format!("{:?}", conn.protocol_version().unwrap_or(rustls::ProtocolVersion::TLSv1_3)),
+                    version: format!(
+                        "{:?}",
+                        conn.protocol_version()
+                            .unwrap_or(rustls::ProtocolVersion::TLSv1_3)
+                    ),
                     cipher: format!("{:?}", conn.negotiated_cipher_suite().map(|cs| cs.suite())),
                     session_resumed: conn.is_handshaking(), // Note: this is inverted, but we don't have direct access
-                    cert_expires: None, // Would need to parse the certificate
+                    cert_expires: None,                     // Would need to parse the certificate
                     cert_subject: None,
                 };
 
@@ -255,12 +259,18 @@ mod tests {
 
     #[test]
     fn parse_target_with_port() {
-        assert_eq!(TlsProbe::parse_target("https://example.com:8443"), ("example.com", 8443));
+        assert_eq!(
+            TlsProbe::parse_target("https://example.com:8443"),
+            ("example.com", 8443)
+        );
     }
 
     #[test]
     fn parse_target_default_port() {
-        assert_eq!(TlsProbe::parse_target("https://example.com"), ("example.com", 443));
+        assert_eq!(
+            TlsProbe::parse_target("https://example.com"),
+            ("example.com", 443)
+        );
         assert_eq!(TlsProbe::parse_target("example.com"), ("example.com", 443));
     }
 }

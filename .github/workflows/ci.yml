@@ -46,8 +46,12 @@ jobs:
       - name: Install dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y libpcap-dev
-      - name: Run tests
+      - name: Run tests (Unix)
+        if: matrix.os != 'windows-latest'
         run: cargo test --workspace
+      - name: Run tests (Windows, skip dns-observer)
+        if: matrix.os == 'windows-latest'
+        run: cargo test --workspace --exclude murmur-dns-observer
 
   build:
     name: Build (${{ matrix.target }})
@@ -71,8 +75,12 @@ jobs:
       - name: Install dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y libpcap-dev
-      - name: Build
+      - name: Build (Unix)
+        if: matrix.os != 'windows-latest'
         run: cargo build --workspace --release --target ${{ matrix.target }}
+      - name: Build (Windows, skip dns-observer)
+        if: matrix.os == 'windows-latest'
+        run: cargo build --workspace --exclude murmur-dns-observer --release --target ${{ matrix.target }}
 
   # Check binary size stays under 20MB (per onboarding guide)
   size-check:
@@ -92,7 +100,7 @@ jobs:
           MAX_SIZE=$((20 * 1024 * 1024))  # 20MB in bytes
           for bin in target/release/murmur target/release/murmur-agent; do
             if [ -f "$bin" ]; then
-              SIZE=$(stat -f%z "$bin" 2>/dev/null || stat -c%s "$bin")
+              SIZE=$(stat -c%s "$bin")
               echo "$bin: $SIZE bytes"
               if [ "$SIZE" -gt "$MAX_SIZE" ]; then
                 echo "ERROR: $bin exceeds 20MB limit"

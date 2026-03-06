@@ -199,8 +199,10 @@ impl EndpointTracker {
         if let Some(endpoint) = self.endpoints.get_mut(&query.hostname) {
             endpoint.update_from_query(query);
         } else {
-            self.endpoints
-                .insert(query.hostname.clone(), DiscoveredEndpoint::from_query(query));
+            self.endpoints.insert(
+                query.hostname.clone(),
+                DiscoveredEndpoint::from_query(query),
+            );
         }
     }
 
@@ -286,7 +288,10 @@ mod tests {
 
         // First query
         tracker.record_query(&query);
-        let initial_confidence = tracker.endpoints.get("api.example.com").map(|e| e.confidence);
+        let initial_confidence = tracker
+            .endpoints
+            .get("api.example.com")
+            .map(|e| e.confidence);
 
         // More queries
         for _ in 0..5 {
@@ -294,7 +299,10 @@ mod tests {
             tracker.record_query(&query);
         }
 
-        let final_confidence = tracker.endpoints.get("api.example.com").map(|e| e.confidence);
+        let final_confidence = tracker
+            .endpoints
+            .get("api.example.com")
+            .map(|e| e.confidence);
 
         assert!(final_confidence > initial_confidence);
     }

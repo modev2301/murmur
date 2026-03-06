@@ -157,9 +157,16 @@ impl fmt::Display for Error {
             ErrorKind::TlsHandshake { host, source } => {
                 write!(f, "TLS handshake failed with {host}: {source}")
             }
-            ErrorKind::Http { url, status, source } => {
+            ErrorKind::Http {
+                url,
+                status,
+                source,
+            } => {
                 if let Some(code) = status {
-                    write!(f, "HTTP request to {url} failed with status {code}: {source}")
+                    write!(
+                        f,
+                        "HTTP request to {url} failed with status {code}: {source}"
+                    )
                 } else {
                     write!(f, "HTTP request to {url} failed: {source}")
                 }

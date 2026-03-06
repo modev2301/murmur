@@ -1,0 +1,23 @@
+[package]
+name = "murmur-cli"
+description = "Management and diagnostic CLI for Murmur"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "murmur"
+path = "src/main.rs"
+
+[dependencies]
+murmur-core = { workspace = true }
+murmur-probes = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+
+[lints]
+workspace = true

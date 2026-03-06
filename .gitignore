@@ -1,0 +1,23 @@
+# Build artifacts
+/target/
+
+# Reference repos (used for learning, not part of murmur)
+/mini-redis/
+/ripgrep/
+/vector/
+/sniffnet/
+/pingora/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local

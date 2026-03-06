@@ -1,0 +1,24 @@
+[package]
+name = "murmur-agent"
+description = "Native background agent for Murmur"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "murmur-agent"
+path = "src/main.rs"
+
+[dependencies]
+murmur-core = { workspace = true }
+murmur-probes = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+futures = { workspace = true }
+config = { workspace = true }
+
+[lints]
+workspace = true

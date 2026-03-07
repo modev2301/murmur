@@ -540,6 +540,8 @@ fn get_wifi_info_windows() -> Option<WifiInfo> {
 }
 
 /// Convert WiFi channel to frequency in MHz.
+/// Used on macOS and Windows WiFi paths; kept for tests on all platforms.
+#[allow(dead_code)]
 fn channel_to_frequency(channel: u32) -> u32 {
     match channel {
         // 2.4 GHz band

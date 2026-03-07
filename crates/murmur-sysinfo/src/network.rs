@@ -308,12 +308,11 @@ fn detect_vpn_provider() -> Option<String> {
 /// Find VPN-like interfaces.
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 fn find_vpn_interfaces() -> Vec<(String, Option<String>)> {
-    use std::process::Command;
-
     let mut vpn_interfaces = Vec::new();
 
     #[cfg(target_os = "macos")]
     {
+        use std::process::Command;
         let output = Command::new("ifconfig").output();
 
         if let Ok(output) = output {

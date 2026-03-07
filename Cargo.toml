@@ -4,6 +4,8 @@ members = [
     "crates/murmur-core",
     "crates/murmur-probes",
     "crates/murmur-dns-observer",
+    "crates/murmur-sysinfo",
+    "crates/murmur-wasm",
     "crates/murmur-agent",
     "crates/murmur-cli",
 ]
@@ -12,7 +14,7 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/murmur/murmur"
+repository = "https://github.com/modev2301/murmur"
 rust-version = "1.75"
 
 [workspace.dependencies]
@@ -55,6 +57,10 @@ pcap = "2"
 etherparse = "0.18"
 dns-parser = "0.8"
 
+# ICMP / raw sockets
+surge-ping = "0.8"
+socket2 = { version = "0.5", features = ["all"] }
+
 # Async utilities
 async-trait = "0.1"
 futures = "0.3"
@@ -72,6 +78,14 @@ webpki-roots = "0.26"
 murmur-core = { path = "crates/murmur-core" }
 murmur-probes = { path = "crates/murmur-probes" }
 murmur-dns-observer = { path = "crates/murmur-dns-observer" }
+murmur-sysinfo = { path = "crates/murmur-sysinfo" }
+
+# System info
+sysinfo = "0.32"
+
+# HTTP server (for extension API)
+axum = "0.7"
+tower-http = { version = "0.5", features = ["cors"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

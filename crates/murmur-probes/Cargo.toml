@@ -19,6 +19,9 @@ rustls = { workspace = true }
 tokio-rustls = { workspace = true }
 webpki-roots = { workspace = true }
 chrono = { workspace = true }
+surge-ping = { workspace = true }
+socket2 = { workspace = true }
+serde = { workspace = true }
 
 [lints]
 workspace = true

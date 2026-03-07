@@ -1,0 +1,44 @@
+[package]
+name = "murmur-wasm"
+description = "WebAssembly probe runtime for Murmur"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde-wasm-bindgen = "0.6"
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+    "console",
+    "Window",
+    "Location",
+    "Document",
+    "Performance",
+    "PerformanceTiming",
+    "PerformanceNavigationTiming",
+    "PerformanceResourceTiming",
+    "PerformanceEntry",
+    "Navigator",
+    "Headers",
+    "Request",
+    "RequestInit",
+    "RequestMode",
+    "Response",
+]
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[lints]
+workspace = true

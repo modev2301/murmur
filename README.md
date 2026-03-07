@@ -1,124 +1,52 @@
 # Murmur
 
-Murmur measures where latency actually comes from — DNS, TCP, TLS, and TTFB — from wherever you deploy it.
+[![CI](https://github.com/modev2301/murmur/actions/workflows/ci.yml/badge.svg)](https://github.com/modev2301/murmur/actions)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 
-```
-$ murmur probe https://api.example.com
+*Most outages start as a murmur. Murmur hears them first.*
 
-  DNS:   12ms
-  TCP:   23ms
-  TLS:   45ms  ← TLS handshake is 45% of your latency
-  TTFB: 281ms
-  Total: 361ms
-```
+Network experience monitoring: agent, probes, and OpenTelemetry metrics. Captures probe timing (DNS, TCP, TLS, TTFB), packet loss, jitter, gateway RTT, and system/network context (WiFi, VPN, proxy). Optional Chrome extension sends browser timing and Web Vitals to the agent.
 
-Most monitoring tools tell you an endpoint is slow. Murmur tells you which layer is slow and by how much. Deploy it alongside your existing collector — Murmur feeds it, not replaces it.
+## What’s in the repo
 
-## Features
+| Crate / area | Description |
+|--------------|-------------|
+| **murmur-agent** | Background agent: runs HTTP probes, ICMP ping (packet loss), emits OTEL metrics, hosts HTTP API for the extension |
+| **murmur-cli** | CLI: `murmur probe <url>`, `murmur config`, `murmur version` |
+| **murmur-core** | Config, OTEL telemetry, types |
+| **murmur-probes** | Probes: HTTP, DNS, TCP, TLS, ICMP ping, traceroute |
+| **murmur-sysinfo** | Host/network context: hostname, arch, CPU, memory, gateway, interface, WiFi (SSID, BSSID, signal quality), VPN (when default route is VPN), proxy |
+| **murmur-dns-observer** | DNS observation (packet capture) |
+| **murmur-wasm** | WASM-related utilities |
+| **extension/** | Chrome extension: Navigation/Resource timing, Web Vitals → agent |
 
-- **Granular timing breakdowns** — DNS, TCP, TLS, TTFB measured separately
-- **OpenTelemetry native** — Emits metrics directly via OTLP to any collector
-- **Passive DNS discovery** — Automatically discovers endpoints from network traffic
-- **Connection pooling** — Tracks TLS session resumption for warm vs cold measurements
-- **Cross-platform** — Linux, macOS, Windows
-
-## Quick Start
-
-### Installation
+## Quick start
 
 ```bash
-cargo install murmur-cli
+# Build
+cargo build --release --package murmur-cli --package murmur-agent
+
+# Run agent (probes + extension API); needs an OTEL collector on localhost:4317 or set MURMUR_COLLECTOR_ENDPOINT
+./target/release/murmur-agent
+
+# Single probe from CLI
+./target/release/murmur probe https://www.google.com
+./target/release/murmur probe api.github.com -t http
 ```
-
-Or build from source:
-
-```bash
-git clone https://github.com/murmur/murmur
-cd murmur
-cargo build --release
-```
-
-### Run a probe
-
-```bash
-murmur probe https://api.example.com
-```
-
-### Run the agent
-
-The agent probes targets on an interval and exports metrics to an OTLP collector:
-
-```bash
-# Start with defaults (probes every 60s, exports to localhost:4317)
-murmur-agent
-
-# Or with configuration
-MURMUR_PROBE_INTERVAL_SECONDS=30 \
-MURMUR_COLLECTOR_ENDPOINT=http://otel-collector:4317 \
-murmur-agent
-```
-
-## Requirements
-
-### Rust Version
-
-Murmur requires Rust 1.75 or later.
-
-### DNS Observation (Optional)
-
-The DNS observation feature requires elevated privileges to capture network traffic:
-
-| Platform | Requirement |
-|----------|-------------|
-| Linux | `CAP_NET_RAW` capability or root |
-| macOS | root or membership in `access_bpf` group |
-| Windows | Administrator with [Npcap](https://npcap.com) installed |
-
-On Linux, you can grant capabilities without running as root:
-
-```bash
-sudo setcap cap_net_raw,cap_net_admin=eip /path/to/murmur-agent
-```
-
-DNS observation is not required for basic probing. If the agent lacks permissions, it runs without auto-discovery and uses configured targets only.
-
-### Build Dependencies
-
-- **Linux:** `libpcap-dev` (for DNS observation)
-- **macOS:** libpcap is included with the OS
-- **Windows:** Npcap or WinPcap SDK
 
 ## Configuration
 
-Configuration follows a layered approach:
+- **Config file (optional):** `/etc/murmur/config.toml`
+- **Environment (override config):**
+  - `MURMUR_PROBE_INTERVAL_SECONDS` – probe interval (default 60)
+  - `MURMUR_PROBE_TIMEOUT_SECONDS` – per-probe timeout (must be &lt; interval)
+  - `MURMUR_COLLECTOR_ENDPOINT` – OTLP gRPC endpoint (default `http://localhost:4317`)
 
-1. Compiled defaults
-2. Config file (`/etc/murmur/config.toml` or `~/.config/murmur/config.toml`)
-3. Environment variables (`MURMUR_*`)
+The agent uses built-in default probe targets (e.g. google.com, cloudflare.com, api.github.com). Config file can set `probe.interval_seconds`, `probe.timeout_seconds`, and `collector.endpoint`.
 
-Example config:
+## Metrics (OpenTelemetry)
 
-```toml
-[probe]
-interval_seconds = 60
-timeout_seconds = 30
-targets = [
-    "https://api.example.com",
-    "https://cdn.example.com/health",
-]
-
-[collector]
-endpoint = "http://localhost:4317"
-export_interval_seconds = 15
-
-[logging]
-format = "json"  # or "pretty"
-level = "info"
-```
-
-## Metrics
-
-Murmur emits these metrics to your OTLP collector:
+Emitted by the agent (with resource attributes from sysinfo: host, arch, cpu_cores, memory, gateway, interface, wifi.*, vpn.*, proxy.*):
 
 | Metric | Type | Description |
 |--------|------|-------------|
@@ -126,43 +54,84 @@ Murmur emits these metrics to your OTLP collector:
 | `murmur.probe.tcp_ms` | histogram | TCP connect time |
 | `murmur.probe.tls_ms` | histogram | TLS handshake time |
 | `murmur.probe.ttfb_ms` | histogram | Time to first byte |
-| `murmur.probe.total_ms` | histogram | Total probe duration |
-| `murmur.probe.success` | counter | Success/failure count |
+| `murmur.probe.total_ms` | histogram | Total probe time |
+| `murmur.probe.jitter_ms` | histogram | Jitter (stddev of recent RTTs) |
+| `murmur.probe.packet_loss_pct` | histogram | Packet loss % (from ICMP ping) |
+| `murmur.probe.success` | counter | Probe success/failure |
+| `murmur.gateway.rtt_ms` | histogram | Gateway RTT (when available) |
+| `murmur.gateway.packet_loss` | histogram | Gateway packet loss |
 
-All metrics include `target.url`, `target.host`, `probe.type`, and `agent.version` attributes.
+## Seeing packet loss and jitter locally
 
-## Architecture
+Without running a full collector, you can see the same kind of values the agent sends:
 
+```bash
+# Packet loss % and jitter (stddev of RTTs) for a target; needs sudo for ICMP
+sudo cargo run -p murmur-probes --example show_packet_loss_jitter
+
+# Optional: override target (hostname or IP)
+PING_TARGET=google.com sudo cargo run -p murmur-probes --example show_packet_loss_jitter
 ```
-murmur/
-├── crates/
-│   ├── murmur-core/         # Shared types, config, telemetry
-│   ├── murmur-probes/       # DNS, TCP, TLS, HTTP probe implementations
-│   ├── murmur-dns-observer/ # Passive DNS capture for auto-discovery
-│   ├── murmur-agent/        # Background agent binary
-│   └── murmur-cli/          # CLI tool (murmur command)
-└── docs/
-    └── decisions/           # Architecture Decision Records
+
+Gateway ping stats (including packet loss and RTT stddev):
+
+```bash
+sudo cargo run -p murmur-probes --example ping_gateway
 ```
 
-## Documentation
+## Other examples
 
-- [ADR-001: Workspace Structure](docs/decisions/ADR-001-workspace-structure.md)
-- [ADR-002: Error Handling](docs/decisions/ADR-002-error-handling.md)
-- [ADR-003: OpenTelemetry Metrics](docs/decisions/ADR-003-otel-metrics.md)
-- [ADR-004: DNS Observation](docs/decisions/ADR-004-dns-observation.md)
-- [ADR-005: Connection Pooling](docs/decisions/ADR-005-connection-pooling.md)
+```bash
+# System / network / WiFi / VPN / proxy summary
+cargo run -p murmur-sysinfo --example show
+
+# Traceroute
+sudo cargo run -p murmur-probes --example traceroute -- api.github.com
+
+# Detailed probe (single target)
+cargo run -p murmur-probes --example probe_detailed -- https://www.google.com
+```
+
+## Chrome extension
+
+The extension sends Navigation Timing, Resource Timing, and Web Vitals to the agent at `http://127.0.0.1:9876`. The agent then exports those (and probe metrics) to your OTEL collector.
+
+- **Install:** Load the `extension/` folder as an unpacked extension in Chrome; start the agent first.
+- **Details:** See [extension/README.md](extension/README.md).
+
+## Installation (Linux / macOS)
+
+```bash
+./install.sh
+```
+
+Installs `murmur` and `murmur-agent` to `/usr/local/bin` (override with `INSTALL_DIR`). On Linux, sets `CAP_NET_RAW` and `CAP_NET_ADMIN` so the agent can run ICMP and packet capture without root. Optional: creates `/etc/murmur/config.toml.example` and, on Linux, a systemd service.
+
+**Requirements:** Rust toolchain, and on Linux, `libpcap` (e.g. `libpcap-dev`). On macOS, ICMP still needs `sudo` for the examples; the installed agent may need to run with appropriate privileges if you use ICMP.
+
+## Development
+
+```bash
+cargo build
+cargo test
+```
+
+- **Lints:** `unsafe_code`, `unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented` are restricted by workspace lints.
+- **Docs:** ADRs and decisions live under [docs/decisions/](docs/decisions/).
 
 ## Contributing
 
-Contributions are welcome. Please run the following before submitting a PR:
+Contributions are welcome. Please open an issue or pull request. By contributing, you agree that your contributions may be dual-licensed under MIT and Apache-2.0.
 
-```bash
-cargo fmt --all
-cargo clippy --workspace -- -D warnings
-cargo test --workspace
-```
+## Security
+
+To report a security vulnerability, please open a [private security advisory](https://github.com/modev2301/murmur/security/advisories/new) on GitHub (or contact the maintainers directly). Do not open a public issue.
 
 ## License
 
-Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT) at your option.
+**Murmur** is dual-licensed under either of
+
+- **[MIT License](LICENSE-MIT)**  
+- **[Apache License, Version 2.0](LICENSE-APACHE)**
+
+at your option.

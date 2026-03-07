@@ -16,5 +16,5 @@ pub mod types;
 
 pub use config::AgentConfig;
 pub use error::{Error, ErrorKind, Result};
-pub use telemetry::AgentMetrics;
+pub use telemetry::{AgentMetrics, NavigationTiming, ResourceTiming};
 pub use types::{ProbeResult, ProbeTarget, TimingBreakdown, TlsInfo};

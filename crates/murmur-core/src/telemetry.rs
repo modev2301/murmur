@@ -13,8 +13,10 @@ use opentelemetry::metrics::{Counter, Histogram, MeterProvider, Unit};
 use opentelemetry::KeyValue;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
+use opentelemetry_sdk::resource::Resource;
 use opentelemetry_sdk::runtime::Tokio;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
@@ -32,6 +34,10 @@ pub mod metric_names {
     pub const PROBE_TOTAL_MS: &str = "murmur.probe.total_ms";
     /// Probe success/failure counter.
     pub const PROBE_SUCCESS: &str = "murmur.probe.success";
+    /// Network jitter (stddev of recent RTTs) in milliseconds.
+    pub const PROBE_JITTER_MS: &str = "murmur.probe.jitter_ms";
+    /// Packet loss percentage (0-100) from ping sequence to probe target.
+    pub const PROBE_PACKET_LOSS_PCT: &str = "murmur.probe.packet_loss_pct";
 
     // Agent self-instrumentation metrics
     /// Agent uptime in seconds (gauge).
@@ -46,6 +52,52 @@ pub mod metric_names {
     pub const AGENT_POOL_CONNECTIONS: &str = "murmur.agent.pool_connections";
     /// TLS sessions resumed (counter).
     pub const AGENT_TLS_SESSIONS_RESUMED: &str = "murmur.agent.tls_sessions_resumed";
+
+    // Browser Navigation Timing metrics
+    /// Browser DNS time in milliseconds.
+    pub const BROWSER_DNS_MS: &str = "murmur.browser.dns_ms";
+    /// Browser TCP time in milliseconds.
+    pub const BROWSER_TCP_MS: &str = "murmur.browser.tcp_ms";
+    /// Browser TLS time in milliseconds.
+    pub const BROWSER_TLS_MS: &str = "murmur.browser.tls_ms";
+    /// Browser TTFB in milliseconds.
+    pub const BROWSER_TTFB_MS: &str = "murmur.browser.ttfb_ms";
+    /// DOM Content Loaded time in milliseconds.
+    pub const BROWSER_DCL_MS: &str = "murmur.browser.dom_content_loaded_ms";
+    /// Page load time in milliseconds.
+    pub const BROWSER_LOAD_MS: &str = "murmur.browser.load_ms";
+    /// Largest Contentful Paint in milliseconds.
+    pub const BROWSER_LCP_MS: &str = "murmur.browser.lcp_ms";
+    /// First Contentful Paint in milliseconds.
+    pub const BROWSER_FCP_MS: &str = "murmur.browser.fcp_ms";
+    /// Cumulative Layout Shift.
+    pub const BROWSER_CLS: &str = "murmur.browser.cls";
+    /// First Input Delay in milliseconds.
+    pub const BROWSER_FID_MS: &str = "murmur.browser.fid_ms";
+
+    // Browser Resource Timing metrics
+    /// Resource duration in milliseconds.
+    pub const RESOURCE_DURATION_MS: &str = "murmur.resource.duration_ms";
+    /// Resource transfer size in bytes.
+    pub const RESOURCE_SIZE_BYTES: &str = "murmur.resource.size_bytes";
+    /// Resource count per page.
+    pub const RESOURCE_COUNT: &str = "murmur.resource.count";
+
+    // Gateway / ICMP metrics
+    /// Gateway RTT in milliseconds.
+    pub const GATEWAY_RTT_MS: &str = "murmur.gateway.rtt_ms";
+    /// Gateway packet loss percentage.
+    pub const GATEWAY_PACKET_LOSS: &str = "murmur.gateway.packet_loss";
+    /// Ping RTT to arbitrary host in milliseconds.
+    pub const PING_RTT_MS: &str = "murmur.ping.rtt_ms";
+
+    // Traceroute metrics
+    /// Number of hops to destination.
+    pub const TRACEROUTE_HOPS: &str = "murmur.traceroute.hops";
+    /// Traceroute total latency in milliseconds.
+    pub const TRACEROUTE_LATENCY_MS: &str = "murmur.traceroute.latency_ms";
+    /// Per-hop RTT in milliseconds.
+    pub const TRACEROUTE_HOP_RTT_MS: &str = "murmur.traceroute.hop_rtt_ms";
 }
 
 /// Telemetry emitter for probe results.
@@ -54,20 +106,46 @@ pub mod metric_names {
 /// probe metrics.
 pub struct TelemetryEmitter {
     _provider: SdkMeterProvider,
+    // Probe metrics
     dns_histogram: Histogram<f64>,
     tcp_histogram: Histogram<f64>,
     tls_histogram: Histogram<f64>,
     ttfb_histogram: Histogram<f64>,
     total_histogram: Histogram<f64>,
     success_counter: Counter<u64>,
+    jitter_histogram: Histogram<f64>,
+    packet_loss_histogram: Histogram<f64>,
+    /// Per-target ring buffer of last N total_ms for jitter (sample stddev).
+    probe_rtt_window: Mutex<HashMap<String, Vec<f64>>>,
+    // Browser Navigation Timing metrics
+    browser_dns_histogram: Histogram<f64>,
+    browser_tcp_histogram: Histogram<f64>,
+    browser_tls_histogram: Histogram<f64>,
+    browser_ttfb_histogram: Histogram<f64>,
+    browser_dcl_histogram: Histogram<f64>,
+    browser_load_histogram: Histogram<f64>,
+    browser_lcp_histogram: Histogram<f64>,
+    browser_fcp_histogram: Histogram<f64>,
+    browser_cls_histogram: Histogram<f64>,
+    browser_fid_histogram: Histogram<f64>,
+    // Browser Resource Timing metrics
+    resource_duration_histogram: Histogram<f64>,
+    resource_size_histogram: Histogram<f64>,
+    resource_counter: Counter<u64>,
     agent_version: &'static str,
 }
 
 impl TelemetryEmitter {
     /// Create a new telemetry emitter connected to an OTLP collector.
     ///
+    /// If `resource_attrs` is provided (e.g. from `murmur_sysinfo::ResourceAttributes::to_attributes()`),
+    /// those attributes are attached to the OTEL resource so every metric carries host/wifi/VPN context.
+    ///
     /// Returns `None` if the exporter fails to initialize (collector unreachable).
-    pub fn new(config: &CollectorConfig) -> Option<Arc<Self>> {
+    pub fn new(
+        config: &CollectorConfig,
+        resource_attrs: Option<HashMap<String, String>>,
+    ) -> Option<Arc<Self>> {
         info!(
             endpoint = %config.endpoint,
             "initializing OTLP exporter"
@@ -94,7 +172,17 @@ impl TelemetryEmitter {
             .with_interval(Duration::from_secs(config.export_interval_seconds))
             .build();
 
-        let provider = SdkMeterProvider::builder().with_reader(reader).build();
+        let provider_builder = SdkMeterProvider::builder().with_reader(reader);
+        let provider = if let Some(attrs) = resource_attrs {
+            let kvs: Vec<KeyValue> = attrs
+                .into_iter()
+                .map(|(k, v)| KeyValue::new(k, v))
+                .collect();
+            let resource = Resource::new(kvs);
+            provider_builder.with_resource(resource).build()
+        } else {
+            provider_builder.build()
+        };
 
         // Create a meter for our metrics
         let meter = provider.meter("murmur");
@@ -135,6 +223,96 @@ impl TelemetryEmitter {
             .with_description("Probe success/failure count")
             .init();
 
+        let jitter_histogram = meter
+            .f64_histogram(metric_names::PROBE_JITTER_MS)
+            .with_description("Network jitter (sample stddev of recent total RTTs) in milliseconds")
+            .with_unit(Unit::new("ms"))
+            .init();
+
+        let packet_loss_histogram = meter
+            .f64_histogram(metric_names::PROBE_PACKET_LOSS_PCT)
+            .with_description("Packet loss percentage (0-100) from ping sequence to probe target")
+            .with_unit(Unit::new("%"))
+            .init();
+
+        // Browser Navigation Timing instruments
+        let browser_dns_histogram = meter
+            .f64_histogram(metric_names::BROWSER_DNS_MS)
+            .with_description("Browser DNS resolution time in milliseconds")
+            .with_unit(Unit::new("ms"))
+            .init();
+
+        let browser_tcp_histogram = meter
+            .f64_histogram(metric_names::BROWSER_TCP_MS)
+            .with_description("Browser TCP connection time in milliseconds")
+            .with_unit(Unit::new("ms"))
+            .init();
+
+        let browser_tls_histogram = meter
+            .f64_histogram(metric_names::BROWSER_TLS_MS)
+            .with_description("Browser TLS handshake time in milliseconds")
+            .with_unit(Unit::new("ms"))
+            .init();
+
+        let browser_ttfb_histogram = meter
+            .f64_histogram(metric_names::BROWSER_TTFB_MS)
+            .with_description("Browser time to first byte in milliseconds")
+            .with_unit(Unit::new("ms"))
+            .init();
+
+        let browser_dcl_histogram = meter
+            .f64_histogram(metric_names::BROWSER_DCL_MS)
+            .with_description("DOM Content Loaded time in milliseconds")
+            .with_unit(Unit::new("ms"))
+            .init();
+
+        let browser_load_histogram = meter
+            .f64_histogram(metric_names::BROWSER_LOAD_MS)
+            .with_description("Page load time in milliseconds")
+            .with_unit(Unit::new("ms"))
+            .init();
+
+        let browser_lcp_histogram = meter
+            .f64_histogram(metric_names::BROWSER_LCP_MS)
+            .with_description("Largest Contentful Paint in milliseconds")
+            .with_unit(Unit::new("ms"))
+            .init();
+
+        let browser_fcp_histogram = meter
+            .f64_histogram(metric_names::BROWSER_FCP_MS)
+            .with_description("First Contentful Paint in milliseconds")
+            .with_unit(Unit::new("ms"))
+            .init();
+
+        let browser_cls_histogram = meter
+            .f64_histogram(metric_names::BROWSER_CLS)
+            .with_description("Cumulative Layout Shift score")
+            .init();
+
+        let browser_fid_histogram = meter
+            .f64_histogram(metric_names::BROWSER_FID_MS)
+            .with_description("First Input Delay in milliseconds")
+            .with_unit(Unit::new("ms"))
+            .init();
+
+        // Browser Resource Timing instruments
+        let resource_duration_histogram = meter
+            .f64_histogram(metric_names::RESOURCE_DURATION_MS)
+            .with_description("Resource fetch duration in milliseconds")
+            .with_unit(Unit::new("ms"))
+            .init();
+
+        let resource_size_histogram = meter
+            .f64_histogram(metric_names::RESOURCE_SIZE_BYTES)
+            .with_description("Resource transfer size in bytes")
+            .with_unit(Unit::new("bytes"))
+            .init();
+
+        let resource_counter = meter
+            .u64_counter(metric_names::RESOURCE_COUNT)
+            .with_description("Resources loaded per page")
+            .init();
+
         info!(
             endpoint = %config.endpoint,
             export_interval_seconds = config.export_interval_seconds,
@@ -149,6 +327,22 @@ impl TelemetryEmitter {
             ttfb_histogram,
             total_histogram,
             success_counter,
+            jitter_histogram,
+            packet_loss_histogram,
+            probe_rtt_window: Mutex::new(HashMap::new()),
+            browser_dns_histogram,
+            browser_tcp_histogram,
+            browser_tls_histogram,
+            browser_ttfb_histogram,
+            browser_dcl_histogram,
+            browser_load_histogram,
+            browser_lcp_histogram,
+            browser_fcp_histogram,
+            browser_cls_histogram,
+            browser_fid_histogram,
+            resource_duration_histogram,
+            resource_size_histogram,
+            resource_counter,
             agent_version: env!("CARGO_PKG_VERSION"),
         }))
     }
@@ -166,6 +360,22 @@ impl TelemetryEmitter {
             ttfb_histogram: meter.f64_histogram("noop").init(),
             total_histogram: meter.f64_histogram("noop").init(),
             success_counter: meter.u64_counter("noop").init(),
+            jitter_histogram: meter.f64_histogram("noop").init(),
+            packet_loss_histogram: meter.f64_histogram("noop").init(),
+            probe_rtt_window: Mutex::new(HashMap::new()),
+            browser_dns_histogram: meter.f64_histogram("noop").init(),
+            browser_tcp_histogram: meter.f64_histogram("noop").init(),
+            browser_tls_histogram: meter.f64_histogram("noop").init(),
+            browser_ttfb_histogram: meter.f64_histogram("noop").init(),
+            browser_dcl_histogram: meter.f64_histogram("noop").init(),
+            browser_load_histogram: meter.f64_histogram("noop").init(),
+            browser_lcp_histogram: meter.f64_histogram("noop").init(),
+            browser_fcp_histogram: meter.f64_histogram("noop").init(),
+            browser_cls_histogram: meter.f64_histogram("noop").init(),
+            browser_fid_histogram: meter.f64_histogram("noop").init(),
+            resource_duration_histogram: meter.f64_histogram("noop").init(),
+            resource_size_histogram: meter.f64_histogram("noop").init(),
+            resource_counter: meter.u64_counter("noop").init(),
             agent_version: env!("CARGO_PKG_VERSION"),
         })
     }
@@ -204,6 +414,22 @@ impl TelemetryEmitter {
         self.total_histogram
             .record(result.timing.total_ms as f64, &base_attrs);
 
+        // Update per-target RTT window and emit jitter (sample stddev of recent total_ms)
+        const RTT_WINDOW_SIZE: usize = 10;
+        let total_ms = result.timing.total_ms as f64;
+        let jitter_ms = {
+            let mut guard = self.probe_rtt_window.lock().expect("probe_rtt_window lock");
+            let buf = guard.entry(target_url.to_string()).or_default();
+            buf.push(total_ms);
+            if buf.len() > RTT_WINDOW_SIZE {
+                buf.remove(0);
+            }
+            sample_stddev_ms(buf)
+        };
+        if let Some(jitter) = jitter_ms {
+            self.jitter_histogram.record(jitter, &base_attrs);
+        }
+
         // Record success counter with additional attributes
         let error_kind = if result.success {
             "none"
@@ -241,9 +467,176 @@ impl TelemetryEmitter {
             );
         }
     }
+
+    /// Emit packet loss percentage from a ping sequence to a probe target.
+    pub fn emit_packet_loss(&self, target_url: &str, target_host: &str, loss_pct: f64) {
+        let attrs = [
+            KeyValue::new("target.url", target_url.to_string()),
+            KeyValue::new("target.host", target_host.to_string()),
+            KeyValue::new("probe.type", "ping"),
+            KeyValue::new("agent.version", self.agent_version),
+        ];
+        self.packet_loss_histogram.record(loss_pct, &attrs);
+    }
+
+    /// Emit metrics for browser Navigation Timing data.
+    ///
+    /// This is called when the browser extension sends timing data to the agent.
+    pub fn emit_navigation_timing(&self, timing: &NavigationTiming, host: &str) {
+        let base_attrs = [
+            KeyValue::new("page.url", timing.url.clone()),
+            KeyValue::new("page.host", host.to_string()),
+            KeyValue::new("source", "browser"),
+            KeyValue::new("agent.version", self.agent_version),
+        ];
+
+        // Record timing histograms
+        self.browser_dns_histogram
+            .record(timing.dns_ms, &base_attrs);
+        self.browser_tcp_histogram
+            .record(timing.tcp_ms, &base_attrs);
+        self.browser_tls_histogram
+            .record(timing.tls_ms, &base_attrs);
+        self.browser_ttfb_histogram
+            .record(timing.ttfb_ms, &base_attrs);
+        self.browser_dcl_histogram
+            .record(timing.dom_content_loaded_ms, &base_attrs);
+        self.browser_load_histogram
+            .record(timing.load_ms, &base_attrs);
+
+        // Record Web Vitals (if present)
+        if let Some(lcp) = timing.lcp_ms {
+            self.browser_lcp_histogram.record(lcp, &base_attrs);
+        }
+        if let Some(fcp) = timing.fcp_ms {
+            self.browser_fcp_histogram.record(fcp, &base_attrs);
+        }
+        if let Some(cls) = timing.cls {
+            self.browser_cls_histogram.record(cls, &base_attrs);
+        }
+        if let Some(fid) = timing.fid_ms {
+            self.browser_fid_histogram.record(fid, &base_attrs);
+        }
+
+        debug!(
+            url = %timing.url,
+            dns_ms = timing.dns_ms,
+            tcp_ms = timing.tcp_ms,
+            tls_ms = timing.tls_ms,
+            ttfb_ms = timing.ttfb_ms,
+            dcl_ms = timing.dom_content_loaded_ms,
+            load_ms = timing.load_ms,
+            "browser navigation timing emitted"
+        );
+    }
+
+    /// Emit metrics for browser Resource Timing data.
+    pub fn emit_resource_timing(
+        &self,
+        resource: &ResourceTiming,
+        page_host: &str,
+        resource_host: &str,
+    ) {
+        let base_attrs = [
+            KeyValue::new("resource.url", resource.url.clone()),
+            KeyValue::new("resource.host", resource_host.to_string()),
+            KeyValue::new("resource.type", resource.initiator_type.clone()),
+            KeyValue::new("page.host", page_host.to_string()),
+            KeyValue::new("from_cache", resource.from_cache.to_string()),
+            KeyValue::new("source", "browser"),
+            KeyValue::new("agent.version", self.agent_version),
+        ];
+
+        self.resource_duration_histogram
+            .record(resource.duration_ms, &base_attrs);
+        self.resource_size_histogram
+            .record(resource.transfer_size as f64, &base_attrs);
+        self.resource_counter.add(1, &base_attrs);
+    }
+}
+
+/// Navigation Timing data from browser extension.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct NavigationTiming {
+    /// Page URL.
+    pub url: String,
+    /// DNS lookup time in milliseconds.
+    pub dns_ms: f64,
+    /// TCP connection time in milliseconds.
+    pub tcp_ms: f64,
+    /// TLS handshake time in milliseconds.
+    pub tls_ms: f64,
+    /// Time to First Byte in milliseconds.
+    pub ttfb_ms: f64,
+    /// DOM Content Loaded time in milliseconds.
+    pub dom_content_loaded_ms: f64,
+    /// Load event time in milliseconds.
+    pub load_ms: f64,
+    /// Largest Contentful Paint in milliseconds.
+    pub lcp_ms: Option<f64>,
+    /// First Contentful Paint in milliseconds.
+    pub fcp_ms: Option<f64>,
+    /// Cumulative Layout Shift score.
+    pub cls: Option<f64>,
+    /// First Input Delay in milliseconds.
+    pub fid_ms: Option<f64>,
+    /// Timestamp of the navigation.
+    pub timestamp: i64,
+    /// User agent string.
+    pub user_agent: Option<String>,
+    /// Connection type.
+    pub connection_type: Option<String>,
+    /// Effective connection type.
+    pub effective_type: Option<String>,
+    /// Round-trip time estimate in milliseconds.
+    pub rtt_ms: Option<f64>,
+    /// Downlink speed estimate in Mbps.
+    pub downlink_mbps: Option<f64>,
+}
+
+/// Resource Timing data from browser extension.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ResourceTiming {
+    /// Resource URL.
+    pub url: String,
+    /// Initiator type.
+    pub initiator_type: String,
+    /// Transfer size in bytes.
+    pub transfer_size: u64,
+    /// Encoded body size in bytes.
+    pub encoded_body_size: u64,
+    /// Decoded body size in bytes.
+    pub decoded_body_size: u64,
+    /// DNS lookup time in milliseconds.
+    pub dns_ms: f64,
+    /// TCP connection time in milliseconds.
+    pub tcp_ms: f64,
+    /// TLS handshake time in milliseconds.
+    pub tls_ms: f64,
+    /// Time to First Byte in milliseconds.
+    pub ttfb_ms: f64,
+    /// Total fetch duration in milliseconds.
+    pub duration_ms: f64,
+    /// Start time relative to navigation start.
+    pub start_time_ms: f64,
+    /// Whether the resource was served from cache.
+    pub from_cache: bool,
+    /// Protocol used.
+    pub protocol: Option<String>,
 }
 
 /// Extract hostname from a URL.
+/// Sample standard deviation of a slice (returns None if n < 2).
+fn sample_stddev_ms(v: &[f64]) -> Option<f64> {
+    if v.len() < 2 {
+        return None;
+    }
+    let n = v.len() as f64;
+    let mean = v.iter().sum::<f64>() / n;
+    let variance = v.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0);
+    Some(variance.sqrt())
+}
+
 fn extract_host(url: &str) -> &str {
     let without_scheme = url
         .strip_prefix("https://")

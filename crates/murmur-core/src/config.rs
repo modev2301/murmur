@@ -88,9 +88,43 @@ impl AgentConfig {
 
         let config = builder.build().map_err(|e| Error::config(e.to_string()))?;
 
-        let agent_config: AgentConfig = config
+        let mut agent_config: AgentConfig = config
             .try_deserialize()
             .map_err(|e| Error::config(e.to_string()))?;
+
+        // Environment overrides: the config crate's Environment with separator "_" turns
+        // MURMUR_PROBE_INTERVAL_SECONDS into "probe.interval.seconds" (three levels), not
+        // "probe.interval_seconds", so env vars don't override. Apply them explicitly.
+        if let Ok(s) = std::env::var("MURMUR_PROBE_INTERVAL_SECONDS") {
+            if let Ok(n) = s.parse::<u64>() {
+                agent_config.probe.interval_seconds = n;
+            }
+        }
+        if let Ok(s) = std::env::var("MURMUR_PROBE_TIMEOUT_SECONDS") {
+            if let Ok(n) = s.parse::<u64>() {
+                agent_config.probe.timeout_seconds = n;
+            }
+        }
+        // Ensure timeout < interval (validation requirement); cap if env only set interval
+        if agent_config.probe.timeout_seconds >= agent_config.probe.interval_seconds {
+            agent_config.probe.timeout_seconds = agent_config.probe.interval_seconds.saturating_sub(1).max(1);
+        }
+        // Ensure sum of individual timeouts does not exceed total timeout (scale down if needed)
+        let sum_timeouts = agent_config.probe.dns_timeout_seconds
+            + agent_config.probe.tcp_timeout_seconds
+            + agent_config.probe.tls_timeout_seconds;
+        if sum_timeouts > agent_config.probe.timeout_seconds && agent_config.probe.timeout_seconds > 0 {
+            let t = agent_config.probe.timeout_seconds;
+            let sum = sum_timeouts;
+            agent_config.probe.dns_timeout_seconds = (agent_config.probe.dns_timeout_seconds * t / sum).max(1);
+            agent_config.probe.tcp_timeout_seconds = (agent_config.probe.tcp_timeout_seconds * t / sum).max(1);
+            agent_config.probe.tls_timeout_seconds = (agent_config.probe.tls_timeout_seconds * t / sum).max(1);
+        }
+        if let Ok(s) = std::env::var("MURMUR_COLLECTOR_ENDPOINT") {
+            if !s.is_empty() {
+                agent_config.collector.endpoint = s;
+            }
+        }
 
         // Validate before returning
         agent_config.validate()?;

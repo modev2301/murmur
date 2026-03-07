@@ -24,12 +24,14 @@ async fn main() {
 
     // Single gateway ping
     println!("Pinging default gateway...\n");
-    
+
     match probe.ping_gateway(Duration::from_secs(5)).await {
         Some(result) => {
             println!("Gateway:  {}", result.addr);
             if result.success {
-                println!("RTT:      {:.2}ms", result.rtt.unwrap().as_secs_f64() * 1000.0);
+                if let Some(rtt) = result.rtt {
+                    println!("RTT:      {:.2}ms", rtt.as_secs_f64() * 1000.0);
+                }
                 println!("Status:   OK");
             } else {
                 println!("Status:   FAILED");
@@ -45,14 +47,19 @@ async fn main() {
 
     // Gateway ping statistics (5 pings)
     println!("\n=== Gateway Ping Statistics (5 pings) ===\n");
-    
+
     if let Some(result) = probe.ping_gateway(Duration::from_secs(2)).await {
-        let stats = probe.ping_stats(result.addr, 5, Duration::from_secs(2)).await;
-        
+        let stats = probe
+            .ping_stats(result.addr, 5, Duration::from_secs(2))
+            .await;
+
         println!("Target:       {}", stats.addr);
-        println!("Packets:      {} sent, {} received", stats.packets_sent, stats.packets_received);
+        println!(
+            "Packets:      {} sent, {} received",
+            stats.packets_sent, stats.packets_received
+        );
         println!("Packet Loss:  {:.1}%", stats.packet_loss_percent);
-        
+
         if let Some(min) = stats.min_rtt {
             println!("Min RTT:      {:.2}ms", min.as_secs_f64() * 1000.0);
         }

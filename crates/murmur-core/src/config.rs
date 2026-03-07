@@ -107,18 +107,24 @@ impl AgentConfig {
         }
         // Ensure timeout < interval (validation requirement); cap if env only set interval
         if agent_config.probe.timeout_seconds >= agent_config.probe.interval_seconds {
-            agent_config.probe.timeout_seconds = agent_config.probe.interval_seconds.saturating_sub(1).max(1);
+            agent_config.probe.timeout_seconds =
+                agent_config.probe.interval_seconds.saturating_sub(1).max(1);
         }
         // Ensure sum of individual timeouts does not exceed total timeout (scale down if needed)
         let sum_timeouts = agent_config.probe.dns_timeout_seconds
             + agent_config.probe.tcp_timeout_seconds
             + agent_config.probe.tls_timeout_seconds;
-        if sum_timeouts > agent_config.probe.timeout_seconds && agent_config.probe.timeout_seconds > 0 {
+        if sum_timeouts > agent_config.probe.timeout_seconds
+            && agent_config.probe.timeout_seconds > 0
+        {
             let t = agent_config.probe.timeout_seconds;
             let sum = sum_timeouts;
-            agent_config.probe.dns_timeout_seconds = (agent_config.probe.dns_timeout_seconds * t / sum).max(1);
-            agent_config.probe.tcp_timeout_seconds = (agent_config.probe.tcp_timeout_seconds * t / sum).max(1);
-            agent_config.probe.tls_timeout_seconds = (agent_config.probe.tls_timeout_seconds * t / sum).max(1);
+            agent_config.probe.dns_timeout_seconds =
+                (agent_config.probe.dns_timeout_seconds * t / sum).max(1);
+            agent_config.probe.tcp_timeout_seconds =
+                (agent_config.probe.tcp_timeout_seconds * t / sum).max(1);
+            agent_config.probe.tls_timeout_seconds =
+                (agent_config.probe.tls_timeout_seconds * t / sum).max(1);
         }
         if let Ok(s) = std::env::var("MURMUR_COLLECTOR_ENDPOINT") {
             if !s.is_empty() {

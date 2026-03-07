@@ -417,14 +417,19 @@ impl TelemetryEmitter {
         // Update per-target RTT window and emit jitter (sample stddev of recent total_ms)
         const RTT_WINDOW_SIZE: usize = 10;
         let total_ms = result.timing.total_ms as f64;
-        let jitter_ms = {
-            let mut guard = self.probe_rtt_window.lock().expect("probe_rtt_window lock");
-            let buf = guard.entry(target_url.to_string()).or_default();
-            buf.push(total_ms);
-            if buf.len() > RTT_WINDOW_SIZE {
-                buf.remove(0);
+        let jitter_ms = match self.probe_rtt_window.lock() {
+            Ok(mut guard) => {
+                let buf = guard.entry(target_url.to_string()).or_default();
+                buf.push(total_ms);
+                if buf.len() > RTT_WINDOW_SIZE {
+                    buf.remove(0);
+                }
+                sample_stddev_ms(buf)
             }
-            sample_stddev_ms(buf)
+            Err(e) => {
+                tracing::warn!(error = %e, "probe_rtt_window lock poisoned, skipping jitter");
+                None
+            }
         };
         if let Some(jitter) = jitter_ms {
             self.jitter_histogram.record(jitter, &base_attrs);

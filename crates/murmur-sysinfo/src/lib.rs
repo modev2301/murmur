@@ -67,8 +67,14 @@ impl ResourceAttributes {
         attrs.insert("os.type".to_string(), self.system.os_type.clone());
         attrs.insert("os.version".to_string(), self.system.os_version.clone());
         attrs.insert("host.arch".to_string(), self.system.arch.clone());
-        attrs.insert("host.cpu_cores".to_string(), self.system.cpu_cores.to_string());
-        attrs.insert("host.memory_total_bytes".to_string(), self.system.total_memory_bytes.to_string());
+        attrs.insert(
+            "host.cpu_cores".to_string(),
+            self.system.cpu_cores.to_string(),
+        );
+        attrs.insert(
+            "host.memory_total_bytes".to_string(),
+            self.system.total_memory_bytes.to_string(),
+        );
         if let Some(ref model) = self.system.machine_model {
             attrs.insert("host.model".to_string(), model.clone());
         }

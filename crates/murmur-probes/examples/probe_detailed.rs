@@ -1,15 +1,17 @@
 //! Run with: cargo run -p murmur-probes --example probe_detailed -- https://example.com
 
+use murmur_core::ProbeTarget;
 use murmur_probes::http::HttpProbe;
 use murmur_probes::{Probe, ProbeConfig};
-use murmur_core::ProbeTarget;
 use std::env;
 use std::time::Duration;
 
 #[tokio::main]
 async fn main() {
-    let url = env::args().nth(1).unwrap_or_else(|| "https://www.google.com".to_string());
-    
+    let url = env::args()
+        .nth(1)
+        .unwrap_or_else(|| "https://www.google.com".to_string());
+
     println!("=== Detailed HTTP Probe ===\n");
     println!("Target: {}\n", url);
 
@@ -49,7 +51,10 @@ async fn main() {
 
     // Result
     println!("\n=== Result ===");
-    println!("  Success:    {}", if result.success { "yes" } else { "no" });
+    println!(
+        "  Success:    {}",
+        if result.success { "yes" } else { "no" }
+    );
     if let Some(ip) = result.resolved_ip {
         println!("  Resolved:   {}", ip);
     }
@@ -74,16 +79,16 @@ async fn main() {
     let tcp = result.timing.tcp_connect_ms.unwrap_or(0);
     let tls = result.timing.tls_handshake_ms.unwrap_or(0);
     let ttfb = result.timing.ttfb_ms.unwrap_or(0);
-    
+
     let max_phase = [("DNS", dns), ("TCP", tcp), ("TLS", tls), ("TTFB", ttfb)]
         .into_iter()
         .max_by_key(|(_, v)| *v)
-        .unwrap();
-    
+        .unwrap_or(("TTFB", ttfb));
+
     if max_phase.1 > 0 {
         let pct = (max_phase.1 as f64 / result.timing.total_ms as f64) * 100.0;
         println!("  Slowest:    {} ({:.1}% of total)", max_phase.0, pct);
-        
+
         match max_phase.0 {
             "DNS" => println!("  Suggestion: Try a faster DNS resolver (1.1.1.1, 8.8.8.8)"),
             "TCP" => println!("  Suggestion: Server may be geographically distant or congested"),

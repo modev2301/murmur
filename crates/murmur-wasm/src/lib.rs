@@ -130,9 +130,24 @@ async fn probe_url_internal(url: &str) -> WasmProbeResult {
         }
     };
 
-    let response: Response = resp_value.dyn_into().unwrap_or_else(|_| {
-        panic!("response should be a Response");
-    });
+    let response: Response = match resp_value.dyn_into() {
+        Ok(r) => r,
+        Err(_) => {
+            return WasmProbeResult {
+                url: url.to_string(),
+                success: false,
+                status: None,
+                error: Some("fetch returned non-Response value".to_string()),
+                total_ms: now() - start,
+                dns_ms: None,
+                tcp_ms: None,
+                tls_ms: None,
+                ttfb_ms: None,
+                size_bytes: None,
+                protocol: None,
+            };
+        }
+    };
 
     let status = response.status();
     let total_ms = now() - start;

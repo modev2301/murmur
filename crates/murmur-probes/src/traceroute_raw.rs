@@ -35,7 +35,8 @@ fn build_icmp_echo_v4(ident: u16, seq: u16) -> Vec<u8> {
     let mut buf = vec![
         ICMP_ECHO_REQUEST,
         0, // code
-        0, 0, // checksum (filled below)
+        0,
+        0, // checksum (filled below)
         (id_be >> 8) as u8,
         (id_be & 0xff) as u8,
         (seq_be >> 8) as u8,
@@ -165,28 +166,24 @@ pub fn trace_hop_raw_v4(
             break;
         }
         let remaining = deadline.saturating_duration_since(Instant::now());
-        match recv_with_timeout(&socket, &mut recv_buf, remaining) {
-            Ok(Some(Ok((n, source)))) => {
-                let buf_ref: &[u8] = unsafe {
-                    std::slice::from_raw_parts(recv_buf.as_ptr() as *const u8, n)
-                };
-                if let Some((icmp_type, r_ident, r_seq)) = parse_icmp_reply(buf_ref) {
-                    if r_ident != ident || r_seq as usize >= probes {
-                        continue;
-                    }
-                    if responding_addr.is_none() {
-                        responding_addr = Some(IpAddr::V4(source));
-                    }
-                    if icmp_type == ICMP_ECHO_REPLY {
-                        destination_reached = true;
-                    }
-                    let seq = r_seq as usize;
-                    if rtts[seq].is_none() {
-                        rtts[seq] = Some(send_times[seq].elapsed());
-                    }
+        if let Ok(Some(Ok((n, source)))) = recv_with_timeout(&socket, &mut recv_buf, remaining) {
+            let buf_ref: &[u8] =
+                unsafe { std::slice::from_raw_parts(recv_buf.as_ptr() as *const u8, n) };
+            if let Some((icmp_type, r_ident, r_seq)) = parse_icmp_reply(buf_ref) {
+                if r_ident != ident || r_seq as usize >= probes {
+                    continue;
+                }
+                if responding_addr.is_none() {
+                    responding_addr = Some(IpAddr::V4(source));
+                }
+                if icmp_type == ICMP_ECHO_REPLY {
+                    destination_reached = true;
+                }
+                let seq = r_seq as usize;
+                if rtts[seq].is_none() {
+                    rtts[seq] = Some(send_times[seq].elapsed());
                 }
             }
-            _ => {}
         }
     }
 
@@ -272,8 +269,9 @@ pub fn trace_udp_v4(
                 Ok((n, addr)) => {
                     if let Some(v4) = addr.as_socket_ipv4() {
                         let source = *v4.ip();
-                        let buf_ref: &[u8] =
-                            unsafe { std::slice::from_raw_parts(recv_buf.as_ptr() as *const u8, n) };
+                        let buf_ref: &[u8] = unsafe {
+                            std::slice::from_raw_parts(recv_buf.as_ptr() as *const u8, n)
+                        };
                         if let Some((icmp_type, icmp_code)) = parse_icmp_type_code(buf_ref) {
                             if icmp_type == ICMP_TIME_EXCEEDED {
                                 if responding_addr.is_none() {

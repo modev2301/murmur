@@ -256,9 +256,7 @@ pub fn detect_vpn() -> Option<VpnInfo> {
     }
 
     // Only report VPN when traffic is actually going through a VPN interface
-    let (interface, p) = vpn_interfaces
-        .iter()
-        .find(|(iface, _)| *iface == primary)?;
+    let (interface, p) = vpn_interfaces.iter().find(|(iface, _)| *iface == primary)?;
     Some(VpnInfo {
         interface: interface.clone(),
         provider: p.clone(),
@@ -278,13 +276,13 @@ fn detect_vpn_provider() -> Option<String> {
 
     // Check in priority order (process name substrings)
     let checks: &[(&[&str], &str)] = &[
-        ( &["tailscaled", "tailscale"], "Tailscale" ),
-        ( &["globalprotect", "pangps"], "Palo Alto GlobalProtect" ),
-        ( &["vpnagentd", "ciscod"], "Cisco AnyConnect" ),
-        ( &["openconnect"], "OpenConnect" ),
-        ( &["wg-quick", "wireguard-go"], "WireGuard" ),
-        ( &["openvpn"], "OpenVPN" ),
-        ( &["zscaler"], "Zscaler" ),
+        (&["tailscaled", "tailscale"], "Tailscale"),
+        (&["globalprotect", "pangps"], "Palo Alto GlobalProtect"),
+        (&["vpnagentd", "ciscod"], "Cisco AnyConnect"),
+        (&["openconnect"], "OpenConnect"),
+        (&["wg-quick", "wireguard-go"], "WireGuard"),
+        (&["openvpn"], "OpenVPN"),
+        (&["zscaler"], "Zscaler"),
     ];
     for (process_names, provider) in checks {
         if process_names.iter().any(|&p| text.contains(p)) {

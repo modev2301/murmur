@@ -15,12 +15,15 @@ const PING_TIMEOUT_SECS: u64 = 2;
 
 #[tokio::main]
 async fn main() {
-    let target_url = std::env::var("PING_TARGET")
-        .unwrap_or_else(|_| format!("https://{}/", DEFAULT_TARGET));
+    let target_url =
+        std::env::var("PING_TARGET").unwrap_or_else(|_| format!("https://{}/", DEFAULT_TARGET));
     let target = ProbeTarget::new(&target_url);
 
     println!("=== Packet loss & jitter ===\n");
-    println!("Target:  {} ({} pings, {}s timeout)\n", target.url, PING_COUNT, PING_TIMEOUT_SECS);
+    println!(
+        "Target:  {} ({} pings, {}s timeout)\n",
+        target.url, PING_COUNT, PING_TIMEOUT_SECS
+    );
 
     let probe = match PingProbe::new() {
         Some(p) => p,

@@ -9,11 +9,11 @@ mod api;
 use anyhow::{Context, Result};
 use murmur_core::telemetry::{init_tracing, TelemetryEmitter};
 use murmur_core::{AgentConfig, ProbeTarget};
-use murmur_sysinfo::ResourceAttributes;
 use murmur_probes::{
     dns::DnsProbe, http::HttpProbe, ping::PingProbe, tcp::TcpProbe, tls::TlsProbe, Probe,
     ProbeConfig,
 };
+use murmur_sysinfo::ResourceAttributes;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;

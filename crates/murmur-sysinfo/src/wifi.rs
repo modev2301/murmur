@@ -92,7 +92,7 @@ fn get_wifi_via_airport() -> Option<WifiInfo> {
     }
 
     let text = String::from_utf8_lossy(&output.stdout);
-    
+
     // Check if WiFi is off or not associated
     if text.contains("AirPort: Off") || text.contains("state: init") {
         return None;
@@ -108,7 +108,11 @@ fn get_wifi_via_airport() -> Option<WifiInfo> {
         let line = line.trim();
         // Handle both " SSID:" and "SSID:" formats
         if line.contains("SSID:") && !line.contains("BSSID") {
-            ssid = line.split(':').nth(1).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+            ssid = line
+                .split(':')
+                .nth(1)
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
         } else if line.contains("BSSID:") {
             // BSSID has colons in the value, so rejoin after first split
             let parts: Vec<&str> = line.splitn(2, ':').collect();
@@ -116,20 +120,14 @@ fn get_wifi_via_airport() -> Option<WifiInfo> {
                 bssid = Some(parts[1].trim().to_string()).filter(|s| !s.is_empty());
             }
         } else if line.contains("agrCtlRSSI:") {
-            signal_strength = line
-                .split(':')
-                .nth(1)
-                .and_then(|s| s.trim().parse().ok());
+            signal_strength = line.split(':').nth(1).and_then(|s| s.trim().parse().ok());
         } else if line.contains("channel:") {
             // Format: "channel: 36,1" or "channel: 6"
             if let Some(ch_str) = line.split(':').nth(1) {
                 channel = ch_str.trim().split(',').next().and_then(|s| s.parse().ok());
             }
         } else if line.contains("lastTxRate:") {
-            tx_rate = line
-                .split(':')
-                .nth(1)
-                .and_then(|s| s.trim().parse().ok());
+            tx_rate = line.split(':').nth(1).and_then(|s| s.trim().parse().ok());
         }
     }
 
@@ -181,7 +179,7 @@ fn get_wifi_via_networksetup() -> Option<WifiInfo> {
     }
 
     let text = String::from_utf8_lossy(&output.stdout);
-    
+
     // Format: "Current Wi-Fi Network: NetworkName" or "You are not associated with an AirPort network."
     if text.contains("not associated") || text.contains("Wi-Fi power is currently off") {
         return None;
@@ -239,7 +237,7 @@ fn get_wifi_via_system_profiler() -> Option<WifiInfo> {
     }
 
     let text = String::from_utf8_lossy(&output.stdout);
-    
+
     // Find "Current Network Information:" and extract first network's details
     let mut in_current_network = false;
     let mut bssid = None;
@@ -250,12 +248,12 @@ fn get_wifi_via_system_profiler() -> Option<WifiInfo> {
 
     for line in text.lines() {
         let line = line.trim();
-        
+
         if line.contains("Current Network Information") {
             in_current_network = true;
             continue;
         }
-        
+
         if !in_current_network {
             continue;
         }
@@ -268,11 +266,10 @@ fn get_wifi_via_system_profiler() -> Option<WifiInfo> {
         // BSSID (MAC of access point): "BSSID: aa:bb:cc:dd:ee:ff" or "MAC Address: ..."
         if (line.starts_with("BSSID:") || line.starts_with("MAC Address:")) && bssid.is_none() {
             let value = line
-                .splitn(2, ':')
-                .nth(1)
-                .map(|s| s.trim().to_string())
+                .split_once(':')
+                .map(|(_, v)| v.trim().to_string())
                 .filter(|s| !s.is_empty() && s.contains(':'));
-            if value.as_ref().map_or(false, |s| s.len() >= 17) {
+            if value.as_ref().is_some_and(|s| s.len() >= 17) {
                 bssid = value;
             }
         }
@@ -355,7 +352,7 @@ fn get_ssid_from_networksetup() -> Option<String> {
     }
 
     let text = String::from_utf8_lossy(&output.stdout);
-    
+
     if text.contains("not associated") || text.contains("Wi-Fi power is currently off") {
         return None;
     }

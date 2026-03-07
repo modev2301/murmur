@@ -13,28 +13,27 @@ use std::time::Duration;
 #[tokio::main]
 async fn main() {
     let target = env::args().nth(1).unwrap_or_else(|| "8.8.8.8".to_string());
-    
+
     // Try to parse as IP first, then resolve as hostname
     let addr: IpAddr = match target.parse() {
         Ok(ip) => ip,
         Err(_) => {
             println!("Resolving {}...", target);
-            let resolver = TokioAsyncResolver::tokio_from_system_conf()
-                .unwrap_or_else(|_| TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default()));
-            
+            let resolver = TokioAsyncResolver::tokio_from_system_conf().unwrap_or_else(|_| {
+                TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default())
+            });
+
             match resolver.lookup_ip(&target).await {
-                Ok(lookup) => {
-                    match lookup.iter().next() {
-                        Some(ip) => {
-                            println!("Resolved to {}\n", ip);
-                            ip
-                        }
-                        None => {
-                            eprintln!("No IP addresses found for {}", target);
-                            return;
-                        }
+                Ok(lookup) => match lookup.iter().next() {
+                    Some(ip) => {
+                        println!("Resolved to {}\n", ip);
+                        ip
                     }
-                }
+                    None => {
+                        eprintln!("No IP addresses found for {}", target);
+                        return;
+                    }
+                },
                 Err(e) => {
                     eprintln!("Failed to resolve {}: {}", target, e);
                     return;
@@ -53,7 +52,10 @@ async fn main() {
             eprintln!("  Linux:  sudo or CAP_NET_RAW capability");
             eprintln!("  macOS:  sudo");
             eprintln!("  Windows: Run as Administrator");
-            eprintln!("\nTry: sudo cargo run -p murmur-probes --example traceroute -- {}", addr);
+            eprintln!(
+                "\nTry: sudo cargo run -p murmur-probes --example traceroute -- {}",
+                addr
+            );
             return;
         }
     };
@@ -71,20 +73,34 @@ async fn main() {
 
     // Print results
     println!("{}", result.to_path_string());
-    
+
     // Summary (total time = sum of responsive hop RTTs, not wall clock)
     println!("\n=== Summary ===");
     println!("Hops:         {}", result.hop_count());
-    println!("Reached:      {}", if result.destination_reached { "yes" } else { "no" });
+    println!(
+        "Reached:      {}",
+        if result.destination_reached {
+            "yes"
+        } else {
+            "no"
+        }
+    );
     println!(
         "Total time:   {:.2}ms",
         result.total_latency().as_secs_f64() * 1000.0
     );
-    
+
     let silent = result.non_responding_hops();
     if !silent.is_empty() {
         println!("\nHops that did not respond:");
-        println!("  {}", silent.iter().map(|h| h.ttl.to_string()).collect::<Vec<_>>().join(", "));
+        println!(
+            "  {}",
+            silent
+                .iter()
+                .map(|h| h.ttl.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
     }
 
     let lossy = result.lossy_hops(50.0);

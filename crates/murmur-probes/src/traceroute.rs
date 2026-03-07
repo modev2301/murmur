@@ -86,10 +86,7 @@ impl TracerouteProbe {
                         error: if destination_reached {
                             None
                         } else if n_hops >= MAX_HOPS as usize {
-                            Some(format!(
-                                "destination not reached within {} hops",
-                                MAX_HOPS
-                            ))
+                            Some(format!("destination not reached within {} hops", MAX_HOPS))
                         } else {
                             None
                         },
@@ -106,7 +103,7 @@ impl TracerouteProbe {
                         traceroute_raw::trace_hop_raw_v4(dest_v4, ttl, timeout, probes, ident)
                     })
                     .await
-                    .unwrap_or_else(|_| TracerouteHop {
+                    .unwrap_or(TracerouteHop {
                         ttl,
                         addr: None,
                         hostname: None,
@@ -134,16 +131,13 @@ impl TracerouteProbe {
                     }
                 }
 
-                return TracerouteResult {
+                TracerouteResult {
                     destination: dest,
                     destination_reached: false,
                     hops,
                     total_duration: start.elapsed(),
-                    error: Some(format!(
-                        "destination not reached within {} hops",
-                        MAX_HOPS
-                    )),
-                };
+                    error: Some(format!("destination not reached within {} hops", MAX_HOPS)),
+                }
             }
             IpAddr::V6(_) => {
                 let mut hops = Vec::with_capacity(MAX_HOPS as usize);
@@ -173,16 +167,13 @@ impl TracerouteProbe {
                     }
                 }
                 warn!(destination = %dest, max_hops = MAX_HOPS, "max hops reached without finding destination");
-                return TracerouteResult {
+                TracerouteResult {
                     destination: dest,
                     destination_reached: false,
                     hops,
                     total_duration: start.elapsed(),
-                    error: Some(format!(
-                        "destination not reached within {} hops",
-                        MAX_HOPS
-                    )),
-                };
+                    error: Some(format!("destination not reached within {} hops", MAX_HOPS)),
+                }
             }
         }
     }
@@ -200,10 +191,7 @@ impl TracerouteProbe {
         let mut rtts = Vec::with_capacity(probes);
         let mut responding_addr: Option<IpAddr> = None;
 
-        let config = Config::builder()
-            .kind(kind)
-            .ttl(ttl as u32)
-            .build();
+        let config = Config::builder().kind(kind).ttl(ttl as u32).build();
 
         let Ok(client) = Client::new(&config) else {
             return TracerouteHop {
@@ -418,10 +406,7 @@ impl TracerouteResult {
 
             lines.push(format!(
                 "{:2}  {}{}  {}",
-                hop.ttl,
-                addr_str,
-                hostname_str,
-                rtt_str
+                hop.ttl, addr_str, hostname_str, rtt_str
             ));
         }
 
@@ -457,14 +442,19 @@ fn rand_u16() -> u16 {
 }
 
 #[cfg(test)]
+#[allow(clippy::panic)] // tests use panic for invariants
 mod tests {
     use super::*;
 
     #[test]
     fn traceroute_hop_display() {
+        let addr: std::net::IpAddr = match "192.168.1.1".parse() {
+            Ok(a) => a,
+            Err(_) => panic!("test expects valid IP"),
+        };
         let hop = TracerouteHop {
             ttl: 1,
-            addr: Some("192.168.1.1".parse().unwrap()),
+            addr: Some(addr),
             hostname: Some("gateway.local".to_string()),
             min_rtt: Some(Duration::from_micros(500)),
             max_rtt: Some(Duration::from_millis(2)),
@@ -476,6 +466,10 @@ mod tests {
         };
 
         assert!(hop.responded());
-        assert!((hop.avg_rtt_ms().unwrap() - 1.0).abs() < 0.01);
+        let avg = match hop.avg_rtt_ms() {
+            Some(v) => v,
+            None => panic!("test expects hop to have avg_rtt"),
+        };
+        assert!((avg - 1.0).abs() < 0.01);
     }
 }

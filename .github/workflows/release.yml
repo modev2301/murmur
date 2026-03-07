@@ -56,15 +56,7 @@ jobs:
           fi
 
       - name: Build
-        run: |
-          EXCLUDE_DNS=""
-          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
-            EXCLUDE_DNS="--exclude murmur-dns-observer"
-          fi
-          cargo build --release --target ${{ matrix.target }} \
-            --package murmur-cli \
-            --package murmur-agent \
-            $EXCLUDE_DNS
+        run: cargo build --release --target ${{ matrix.target }} --package murmur-cli --package murmur-agent
 
       - name: Package (Unix)
         if: matrix.os != 'windows-latest'

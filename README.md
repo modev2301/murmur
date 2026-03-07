@@ -119,6 +119,17 @@ cargo test
 - **Lints:** `unsafe_code`, `unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented` are restricted by workspace lints.
 - **Docs:** ADRs and decisions live under [docs/decisions/](docs/decisions/).
 
+## Releasing
+
+Releases are built from tags. Push a tag matching `v*` (e.g. `v0.1.0`); the [Release workflow](.github/workflows/release.yml) builds binaries for Linux (x64 gnu/musl, aarch64), macOS (x64, arm64), and Windows, then creates a GitHub Release with archives and `SHA256SUMS`.
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Ensure CI is green on the commit you tag. The release is created as non-draft; tags containing `-` (e.g. `v0.2.0-beta.1`) are marked prerelease.
+
 ## Contributing
 
 Contributions are welcome. Please open an issue or pull request. By contributing, you agree that your contributions may be dual-licensed under MIT and Apache-2.0.

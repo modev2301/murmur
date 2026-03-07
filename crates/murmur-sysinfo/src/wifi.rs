@@ -1,6 +1,7 @@
 //! WiFi information collection.
 
 use serde::{Deserialize, Serialize};
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use tracing::debug;
 
 /// WiFi connection information.

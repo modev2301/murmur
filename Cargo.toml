@@ -74,11 +74,11 @@ rustls = { version = "0.23", features = ["aws-lc-rs"] }
 tokio-rustls = "0.26"
 webpki-roots = "0.26"
 
-# Internal crates
-murmur-core = { path = "crates/murmur-core" }
-murmur-probes = { path = "crates/murmur-probes" }
-murmur-dns-observer = { path = "crates/murmur-dns-observer" }
-murmur-sysinfo = { path = "crates/murmur-sysinfo" }
+# Internal crates (version required for publishing to crates.io)
+murmur-core = { path = "crates/murmur-core", version = "0.1.0" }
+murmur-probes = { path = "crates/murmur-probes", version = "0.1.0" }
+murmur-dns-observer = { path = "crates/murmur-dns-observer", version = "0.1.0" }
+murmur-sysinfo = { path = "crates/murmur-sysinfo", version = "0.1.0" }
 
 # System info
 sysinfo = "0.32"
